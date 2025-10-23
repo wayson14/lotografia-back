@@ -4,18 +4,19 @@
 ### Standard library
 from datetime import datetime, timedelta
 import os
-
-from typing import Annotated
+import time
+from typing import Annotated, Optional
 
 ### Backend frameworks (FastAPI is built on Starlette)
 import uvicorn # ASGI server
 from fastapi import FastAPI, File, UploadFile, Header, HTTPException, Request, Response
 from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.formparsers import MultiPartParser # framework, on top of which FastAPI is built
+from starlette.middleware.base import BaseHTTPMiddleware
 
 ### NiceGUI TODO: move it to another file
-
+# from nicegui import app, ui, events
 
 ### Own modules
 # TODO: change for specific imports
@@ -87,17 +88,45 @@ async def read_items(token: Annotated[str, Depends(oauth2_scheme)]):
     return {"token": token}
 
 
+### === MIDDLEWARES === ###
+### EXPERIMENTAL
+# passwords = {'user1': 'pass1', 'user2': 'pass2'}
+# unrestricted_page_routes = {'/app/login'}
+# class AppAuthMiddleware(BaseHTTPMiddleware):
+#     """This middleware restricts access to all NiceGUI pages.
+
+#     It redirects the user to the login page if they are not authenticated.
+#     """
+
+#     async def dispatch(self, request: Request, call_next):
+#         if not app.storage.user.get('authenticated', False):
+#             if not request.url.path.startswith('/_nicegui') and request.url.path not in unrestricted_page_routes:
+#                 return RedirectResponse(f'/app/login?redirect_to={request.url.path}')
+#         return await call_next(request)
+
+# app.add_middleware(AppAuthMiddleware)
+
+# @fastapi_app.middleware("http")
+# async def add_process_time_header(request: Request, call_next):
+#     start_time = time.perf_counter()
+#     response = await call_next(request)
+#     process_time = time.perf_counter() - start_time
+#     response.headers["X-Process-Time"] = str(process_time)
+#     return response
+
+
 ### ROOT
 @fastapi_app.get('/')
 def get_root():
-    return {'message': 'Hello, FastAPI! Browse to /gui to see the NiceGUI app.'}
+    return {'message': 'Hello, FastAPI! Browse to /app to see the NiceGUI app.'}
 
 
 # UI
 
+
 ui.run_with(
     fastapi_app,
-    mount_path='/app',  # NOTE this can be omitted if you want the paths passed to @ui.page to be at the root
+    mount_path='/app/',  # NOTE this can be omitted if you want the paths passed to @ui.page to be at the root
     storage_secret='pick your private secret here',  # NOTE setting a secret is optional but allows for persistent storage per user
 )
 
