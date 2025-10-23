@@ -1,64 +1,40 @@
 #!/usr/bin/env python3
+
+### === IMPORTS === ###
+### Standard library
+from datetime import datetime, timedelta
 import os
 import uuid
 from pathlib import Path
-import uvicorn # ASGI server
-from fastapi import FastAPI, File, UploadFile, Header, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
-from nicegui import app, ui, events
-from starlette.formparsers import MultiPartParser # framework, on top of which FastAPI is built
-
-### Security
-
 from typing import Annotated
 
+### Backend frameworks (FastAPI is built on Starlette)
+import uvicorn # ASGI server
+from fastapi import FastAPI, File, UploadFile, Header, HTTPException, Request, Response
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import JSONResponse
+from starlette.formparsers import MultiPartParser # framework, on top of which FastAPI is built
 
+### NiceGUI TODO: move it to another file
+from nicegui import app, ui, events
+
+### Own modules
+# TODO: change for specific imports
 from auth import *
 from models import *
+from views import *
 
+### === CONSTANTS AND SWITCHES === ###
+fastapi_app = FastAPI()
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 1024 * 20  # 20 GiB
-fastapi_app = FastAPI()
 
 UPLOAD_DIR = Path.cwd() / 'uploads'
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-
-
-
-
-    
-
-
-### === Endpoints ==== ###
-### Security experiments
-def fake_hash_password(password: str):
-    return "fakehashed" + password
-
-
-
-
-
-
-
-
-
-# def fake_decoded_token(token):
-#     # totally not secure - for demo purposes only
-#     user = get_user(fake_users_db, token)
-#     return user
-
-
-async def get_current_active_user(
-        current_user: Annotated[User, Depends(get_current_user)],
-):
-    if current_user.disabled:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user
-
-@fastapi_app.post("/token")
+### === Endpoints === ###
+@fastapi_app.post("/token") # endpoint to obtain a JWT token needed to access protected routes
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
@@ -75,7 +51,7 @@ async def login_for_access_token(
         data = {"sub": user.username}, expires_delta=access_token_expires)
     return Token(access_token=access_token, token_type="bearer")
     
-### WITH NO JWT ###
+### WITH NO JWT (left here for learning purposes) ###
 # @fastapi_app.post("/token") # according to OAuth2 spec, this response must be a JSON object
 # async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
 #     user_dict = fake_users_db.get(form_data.username)
@@ -100,16 +76,13 @@ async def read_users_me(
     ):
     return current_user
 
+
 @fastapi_app.get("/users/me/items/")
 async def read_own_items(
     current_user: Annotated[User, Depends(get_current_active_user)],
 ):
     return [{"item_id": "Foo", "owner": current_user.username}]
 
-# experiment of checking the activity status
-# @fastapi_app.get("/users/me/is_active")
-# async def read_users_me(current_active_user: Annotated[User, Depends(get_current_active_user)]):
-#     return current_active_user
 
 @fastapi_app.get("/items/")
 async def read_items(token: Annotated[str, Depends(oauth2_scheme)]):
