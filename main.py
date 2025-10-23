@@ -4,8 +4,7 @@
 ### Standard library
 from datetime import datetime, timedelta
 import os
-import uuid
-from pathlib import Path
+
 from typing import Annotated
 
 ### Backend frameworks (FastAPI is built on Starlette)
@@ -16,7 +15,7 @@ from fastapi.responses import JSONResponse
 from starlette.formparsers import MultiPartParser # framework, on top of which FastAPI is built
 
 ### NiceGUI TODO: move it to another file
-from nicegui import app, ui, events
+
 
 ### Own modules
 # TODO: change for specific imports
@@ -29,8 +28,7 @@ fastapi_app = FastAPI()
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 1024 * 20  # 20 GiB
 
-UPLOAD_DIR = Path.cwd() / 'uploads'
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 
 
 ### === Endpoints === ###
@@ -88,12 +86,6 @@ async def read_own_items(
 async def read_items(token: Annotated[str, Depends(oauth2_scheme)]):
     return {"token": token}
 
-### Logic functions
-async def handle_upload(e: events.UploadEventArguments):
-    filename = f"{uuid.uuid4().hex}_{Path(e.file.name).name}"
-    dest = UPLOAD_DIR / filename
-    await e.file.save(dest)
-    print(dest)
 
 ### ROOT
 @fastapi_app.get('/')
@@ -102,13 +94,6 @@ def get_root():
 
 
 # UI
-@ui.page('/')
-async def show():
-    ui.label('Hello, NiceGUI!')
-    # NOTE dark mode will be persistent for each user across tabs and server restarts
-    ui.dark_mode().bind_value(app.storage.user, 'dark_mode')
-    ui.checkbox('dark mode').bind_value(app.storage.user, 'dark_mode')
-    ui.upload(multiple=True,on_upload=handle_upload).classes('max-w-full' )
 
 ui.run_with(
     fastapi_app,
