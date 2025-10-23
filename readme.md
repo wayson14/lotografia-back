@@ -7,6 +7,10 @@
 - [ ] ability to view sent files in some editor (e.g. Portree)
 - [ ] basic processing workflow allowing for creation of measurable dense point cloud with interchangable processing backend (some kind of interface between)
 
+## Design principles
+1. Maintainability and ease of change are the key factors
+2. Form follows function
+3. AI is ok when it doesn't overcomplicate things
 
 
 
