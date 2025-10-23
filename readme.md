@@ -1,5 +1,16 @@
 # Lotografia Backend
 
+## Feature list
+- [ ] user account functionality 
+- [ ] user-defined projects with files on persistent storage
+- [ ] sending large files to the user personal storage
+- [ ] ability to view sent files in some editor (e.g. Portree)
+- [ ] basic processing workflow allowing for creation of measurable dense point cloud with interchangable processing backend (some kind of interface between)
+
+
+
+
+
 ## Description
 Backend service for Lotografia application built with FastAPI and NiceGUI.
 
