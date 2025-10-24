@@ -10,7 +10,7 @@ from typing import Annotated, Optional
 ### Backend frameworks (FastAPI is built on Starlette)
 import uvicorn # ASGI server
 from fastapi import FastAPI, File, UploadFile, Header, HTTPException, Request, Response
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status, Query
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.formparsers import MultiPartParser # framework, on top of which FastAPI is built
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -23,16 +23,69 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from auth import *
 from models import *
 from views import *
+from db_connector import create_db_and_tables, get_session, SessionDep
 
 ### === CONSTANTS AND SWITCHES === ###
 fastapi_app = FastAPI()
 
 MultiPartParser.spool_max_size = 1024 * 1024 * 1024 * 20  # 20 GiB
 
-
-
+@fastapi_app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
 
 ### === Endpoints === ###
+### HEROES ENDPOINTS ###
+@fastapi_app.post("/heroes/", response_model=HeroPublic)
+def create_hero(hero: HeroCreate, session: SessionDep ):
+    hashed_password = get_password_hash(hero.password)
+    extra_data = {"hashed_password": hashed_password}
+    db_hero = Hero.model_validate(hero, update=extra_data) # here we inject data before it is stored
+  
+    session.add(db_hero)
+    session.commit()
+    session.refresh(db_hero)
+    return db_hero
+
+@fastapi_app.get("/heroes/", response_model=list[HeroPublic])
+def read_heroes(
+    session: SessionDep,
+    offset: int = 0,
+    limit: Annotated[int, Query(le=100)] = 100,
+) -> list[Hero]:
+    heroes = session.exec(select(Hero).offset(offset).limit(limit)).all()
+    return heroes
+
+@fastapi_app.get("/heroes/{hero_id}", response_model=HeroPublic)
+def read_hero(hero_id: int, session: SessionDep) -> Hero:
+    hero = session.get(Hero, hero_id)
+    if not hero:
+        raise HTTPException(status_code=404, detail="Hero not found")
+    return hero
+
+@fastapi_app.delete("/heroes/{hero_id}")
+def delete_hero(hero_id: int, session: SessionDep):
+    hero = session.get(Hero, hero_id)
+    if not hero:
+        raise HTTPException(status_code=404, detail="Hero not found")
+    session.delete(hero)
+    session.commit()
+    return {"ok": True}
+
+@app.patch("/heroes/{hero_id}", response_model=HeroPublic)
+def update_hero(hero_id: int, hero: HeroUpdate, session: SessionDep):
+    hero_db = session.get(Hero, hero_id)
+    if not hero_db:
+        raise HTTPException(status_code=404, detail="Hero not found")
+    hero_data = hero.model_dump(exclude_unset = True)
+    hero_data = hero.model_dump(exclude_unset=True)
+    hero_db.sqlmodel_update(hero_data)
+    session.add(hero_db)
+    session.commit()
+    session.refresh(hero_db)
+    return hero_db
+###################################
+
 @fastapi_app.post("/token") # endpoint to obtain a JWT token needed to access protected routes
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
