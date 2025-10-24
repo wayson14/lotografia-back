@@ -122,6 +122,41 @@ def get_root():
 
 
 # UI
+@ui.page('/login')
+def login(redirect_to: str = '/') -> Optional[RedirectResponse]:
+    def login():
+        if 'username' in app.storage.user.keys():
+            if app.storage.user['username'] == username.value:
+                ui.notify('You are already logged in.', color='info')
+                return
+        
+        
+        user = authenticate_user(fake_users_db, username.value, password.value)
+        if not user:
+            ui.notify('Login failed. Please check your credentials.', color='negative')
+            return
+        app.storage.user['username'] = user.username
+        app.storage.user['authenticated'] = True
+        ui.notify('Login successful!', color='positive')
+        ui.navigate.to("/")
+    
+    def logout():
+        if app.storage.user:
+            app.storage.user["username"] = None
+            app.storage.user["authenticated"] = False
+            ui.notify('Logged out successfully.', color='positive')
+        else:
+            ui.notify('You are not logged in.', color='info')
+
+    ui.label(app.storage.user.get('username', None)).bind_text_from(app.storage.user, 'username')
+
+    username = ui.input('Username').on('keydown.enter', login)
+    password = ui.input('Password', password=True, password_toggle_button=True).on('keydown.enter', login)
+    
+    ui.button('Log in', on_click=login)
+    ui.button('Log out', on_click=logout)
+    ui.button('Go to root', on_click = lambda: ui.navigate.to("/"))
+
 
 
 ui.run_with(
