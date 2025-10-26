@@ -11,7 +11,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import Depends, FastAPI, HTTPException, status
 
 
-from models import Token, TokenData, User, UserInDB
+from models import Token, TokenData, User
 ### OAuth2
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -56,7 +56,7 @@ def get_password_hash(password):
 def get_user(db, username: str):
     if username in db:
         user_dict = db[username]
-        return UserInDB(**user_dict)
+        return User(**user_dict)
     
 def authenticate_user(fake_db, username: str, password: str):
     user = get_user(fake_db, username)
