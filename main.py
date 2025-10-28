@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import os
 import time
 from typing import Annotated, Optional
+import functools
 
 ### Backend frameworks (FastAPI is built on Starlette)
 import uvicorn # ASGI server
@@ -57,20 +58,20 @@ async def login_for_access_token(
         # "sub" stems from "subject" and is a standard defined in JWT docs
         data = {"sub": user.username}, expires_delta=access_token_expires)
     return Token(access_token=access_token, token_type="bearer")
-    
+
 ### WITH NO JWT (left here for learning purposes) ###
 # @fastapi_app.post("/token") # according to OAuth2 spec, this response must be a JSON object
 # async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
 #     user_dict = fake_users_db.get(form_data.username)
 #     if not user_dict:
 #         raise HTTPException(status_code=400, detail="Incorrect username or password")
-#     user = UserInDB(**user_dict) 
+#     user = UserInDB(**user_dict)
 #     hashed_password = fake_hash_password(form_data.password)
 #     if not hashed_password == user.hashed_password:
 #         raise HTTPException(status_code=400, detail="Incorrect username or password")
-    
+
 #     # this access token should be something unique and secret
-#     return {"access_token": user.username, "token_type": "bearer"} 
+#     return {"access_token": user.username, "token_type": "bearer"}
 
 
 # @fastapi_app.get("/users/me/items/")
@@ -106,15 +107,41 @@ UPLOAD_DIR = Path.cwd() / 'uploads'
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ### Logic functions
-async def handle_upload(e: events.UploadEventArguments):
+async def page_reload():
+    ui.run_javascript('location.reload();')
+
+async def handle_upload(e: events.UploadEventArguments, destination=""):
     filename = f"{uuid.uuid4().hex}_{Path(e.file.name).name}"
     dest = UPLOAD_DIR / filename
+    if len(destination)>0:
+        dest =os.path.join(destination, Path(e.file.name).name) 
     await e.file.save(dest)
     print(dest)
+    await page_reload()
 
 
 def is_authenticated():
     return True
+
+
+### LOGIC DECORATORS
+def check_if_authenticated():
+    def decorator(func):
+        @functools.wraps(func)  # For preserving the metadata of func.
+        def wrapper(*args, **kwargs):
+            # Do stuff before func possibly using arg...
+            print("AUTH DECORATOR")
+            if app.storage.user.get("authenticated") != True:
+                ui.navigate.to("/login")
+            else:
+                pass
+            result = func(*args, **kwargs)
+            # Do stuff after func possibly using arg...
+            return result
+
+        return wrapper
+
+    return decorator
 
 
 ### === UI === ###
@@ -136,7 +163,7 @@ async def show():
     ui.checkbox('dark mode').bind_value(app.storage.user, 'dark_mode')
     ui.upload(multiple=True,on_upload=handle_upload).classes('max-w-full' )
 
-### LOGIN 
+### LOGIN
 @ui.page('/login')
 def login(redirect_to: str = '/') -> Optional[RedirectResponse]:
     navbar()
@@ -232,28 +259,77 @@ def handle_delete_project(project_to_delete) -> None:
 
 
 ### PROJECT/project_id PAGE
+
+# file deletion
+async def handle_delete_file(file_entry: os.DirEntry) -> None:
+    os.remove(file_entry.path)
+    await page_reload()
+
+
+# file download
+def handle_download(e: events.UploadEventArguments) -> None:
+    pass
+
+# file opening (.las, .tiff)
+
+
+# file move (to other project)
+
+
+## file action menu
+def file_bar(file_entry: os.DirEntry) -> None:
+    with ui.row():
+        ui.label(file_entry.name)
+        ui.button("Open file", on_click=lambda: ui.notify("Not implemented yet!", type="info"))
+        ui.button("Download file", on_click=lambda e: ui.download.file(file_entry.path))
+        ui.button("Delete file", on_click=lambda: handle_delete_file(file_entry))
+        ui.button("Move file", on_click=lambda e: ui.notify("Not implemented yet!", type="info"))
+
 @ui.page("/project/{project_id}")
-def project_edit(project_id) -> None:
-    ui.label(project_id)
+def project_edit(project_id: int) -> None:
+    navbar()
+    ### getting project data
+    with Session(engine) as session:
+        projects = session.exec(
+            select(User).where(User.username == app.storage.user["username"])
+        ).one().projects
+    project = list(filter(lambda project: project.id == int(project_id), projects))[0]
+    ui.label(f"Project name: {project.name}")
+    ui.label(f"Project description: {project.description}")
+    # ui.label(project_id)
+
+    ### upload module
+    project_path = os.path.join(USER_PROJECTS_PATH, str(project_id))
+    ui.upload(multiple=True,on_upload=lambda e: handle_upload(e, destination = project_path)).classes('max-w-full' )
+
+    ### list files in dir
+    dir_generator = os.scandir(project_path)
+    for entry in dir_generator:
+        file_bar(entry)
+        # ui.label(entry.name)
 
 
 ### projects PAGE
 def project_bar(project: Project) -> None:
     with ui.row():
-        ui.label(project.name)
+        ui.label(f"Project name: {project.name}")
+        ui.label(f"Number of files: {len(list(
+            os.scandir(os.path.join(USER_PROJECTS_PATH, str(project.id)))))}")
         ui.button("Go to project", on_click= lambda: ui.navigate.to(f"/project/{project.id}"))
-        ui.button("Delete project", on_click=lambda: handle_delete_project(project))
-    
+        ui.button("Delete project", on_click=lambda e: handle_delete_project(e, project))
+
+
 @ui.page("/projects")
+@check_if_authenticated()
 def projects() -> Optional[RedirectResponse]:
     navbar()
-    if app.storage.user.get("authenticated") != True:
-        ui.navigate.to("/login")
-    else:
-        projects = db.get_projects(app.storage.user["username"])
-        ui.button("Add project", on_click = lambda: ui.navigate.to("/add-project"))
-        for project in projects:
-            project_bar(project)      
+    # if app.storage.user.get("authenticated") != True:
+    #     ui.navigate.to("/login")
+    # else:
+    projects = db.get_projects(app.storage.user["username"])
+    ui.button("Add project", on_click = lambda: ui.navigate.to("/add-project"))
+    for project in projects:
+        project_bar(project)      
 
 ### APP MOUNT WITH FASTAPI
 ui.run_with(

@@ -1,6 +1,6 @@
 # Uploads
 uploads/
-
+user_projects/
 # DB development
 *.db
 *.sqlite3
