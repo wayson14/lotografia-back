@@ -14,7 +14,6 @@ from fastapi import Depends, FastAPI, HTTPException, status, Query
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.formparsers import MultiPartParser # framework, on top of which FastAPI is built
 from starlette.middleware.base import BaseHTTPMiddleware
-
 ### NiceGUI TODO: move it to another file
 # from nicegui import app, ui, events
 
@@ -23,82 +22,36 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from auth import *
 from models import *
 from views import *
-from db_connector import create_db_and_tables, get_session, SessionDep
+from db_connector import create_db_and_tables, get_session, SessionDep, engine, DBConnector
 # from db_connector import create_heroes
 
 ### === CONSTANTS AND SWITCHES === ###
 fastapi_app = FastAPI()
-
 MultiPartParser.spool_max_size = 1024 * 1024 * 1024 * 20  # 20 GiB
+
+db = DBConnector()
+
+USER_PROJECTS_PATH = os.path.join("user_projects") 
 
 @fastapi_app.on_event("startup")
 def on_startup():
     create_db_and_tables()
-    # create_heroes()
+    if not os.path.exists(USER_PROJECTS_PATH):
+        os.makedirs(USER_PROJECTS_PATH)
 
-### === Endpoints === ###
-### HEROES ENDPOINTS ###
-# @fastapi_app.post("/heroes/", response_model=HeroPublic)
-# def create_hero(hero: HeroCreate, session: SessionDep ):
-#     hashed_password = get_password_hash(hero.password)
-#     extra_data = {"hashed_password": hashed_password}
-#     db_hero = Hero.model_validate(hero, update=extra_data) # here we inject data before it is stored
-  
-#     session.add(db_hero)
-#     session.commit()
-#     session.refresh(db_hero)
-#     return db_hero
-
-# @fastapi_app.get("/heroes/", response_model=list[HeroPublic])
-# def read_heroes(
-#     session: SessionDep,
-#     offset: int = 0,
-#     limit: Annotated[int, Query(le=100)] = 100,
-# ) -> list[Hero]:
-#     heroes = session.exec(select(Hero).offset(offset).limit(limit)).all()
-#     return heroes
-
-# @fastapi_app.get("/heroes/{hero_id}", response_model=HeroPublic)
-# def read_hero(hero_id: int, session: SessionDep) -> Hero:
-#     hero = session.get(Hero, hero_id)
-#     if not hero:
-#         raise HTTPException(status_code=404, detail="Hero not found")
-#     return hero
-
-# @fastapi_app.delete("/heroes/{hero_id}")
-# def delete_hero(hero_id: int, session: SessionDep):
-#     hero = session.get(Hero, hero_id)
-#     if not hero:
-#         raise HTTPException(status_code=404, detail="Hero not found")
-#     session.delete(hero)
-#     session.commit()
-#     return {"ok": True}
-
-# @app.patch("/heroes/{hero_id}", response_model=HeroPublic)
-# def update_hero(hero_id: int, hero: HeroUpdate, session: SessionDep):
-#     hero_db = session.get(Hero, hero_id)
-#     if not hero_db:
-#         raise HTTPException(status_code=404, detail="Hero not found")
-#     hero_data = hero.model_dump(exclude_unset = True)
-#     hero_data = hero.model_dump(exclude_unset=True)
-#     hero_db.sqlmodel_update(hero_data)
-#     session.add(hero_db)
-#     session.commit()
-#     session.refresh(hero_db)
-#     return hero_db
-###################################
 
 @fastapi_app.post("/token") # endpoint to obtain a JWT token needed to access protected routes
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
-    user = authenticate_user(fake_users_db, form_data.username, form_data.password)
-    if not user:
+    auth_result = authenticate_user(form_data.username, form_data.password)
+    if not auth_result:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"}
         )
+    user = db.get_user(form_data.username)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         # "sub" stems from "subject" and is a standard defined in JWT docs
@@ -124,7 +77,7 @@ async def login_for_access_token(
 # async def read_own_items(current_user):
 #     return [{"item_id": "Foo", "owner": current_user.username}]
 
-@fastapi_app.get("/users/me", response_model=User)
+@fastapi_app.get("/users/me", response_model=UserPublic)
 async def read_users_me(
     current_user: Annotated[User, Depends(get_current_active_user)]
     ):
@@ -143,42 +96,44 @@ async def read_items(token: Annotated[str, Depends(oauth2_scheme)]):
     return {"token": token}
 
 
-### === MIDDLEWARES === ###
-### EXPERIMENTAL
-# passwords = {'user1': 'pass1', 'user2': 'pass2'}
-# unrestricted_page_routes = {'/app/login'}
-# class AppAuthMiddleware(BaseHTTPMiddleware):
-#     """This middleware restricts access to all NiceGUI pages.
-
-#     It redirects the user to the login page if they are not authenticated.
-#     """
-
-#     async def dispatch(self, request: Request, call_next):
-#         if not app.storage.user.get('authenticated', False):
-#             if not request.url.path.startswith('/_nicegui') and request.url.path not in unrestricted_page_routes:
-#                 return RedirectResponse(f'/app/login?redirect_to={request.url.path}')
-#         return await call_next(request)
-
-# app.add_middleware(AppAuthMiddleware)
-
-# @fastapi_app.middleware("http")
-# async def add_process_time_header(request: Request, call_next):
-#     start_time = time.perf_counter()
-#     response = await call_next(request)
-#     process_time = time.perf_counter() - start_time
-#     response.headers["X-Process-Time"] = str(process_time)
-#     return response
-
-
 ### ROOT
 @fastapi_app.get('/')
 def get_root():
     return {'message': 'Hello, FastAPI! Browse to /app to see the NiceGUI app.'}
 
+# APP LOGIC
+UPLOAD_DIR = Path.cwd() / 'uploads'
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+### Logic functions
+async def handle_upload(e: events.UploadEventArguments):
+    filename = f"{uuid.uuid4().hex}_{Path(e.file.name).name}"
+    dest = UPLOAD_DIR / filename
+    await e.file.save(dest)
+    print(dest)
+
 
 # UI
+def navbar():
+    with ui.row():
+        ui.button('Go to root', on_click = lambda: ui.navigate.to("/"))
+        ui.button('Go to projects', on_click = lambda: ui.navigate.to("/projects"))
+        ui.button('Go to login', on_click = lambda: ui.navigate.to("/login"))
+
+@ui.page('/')
+async def show():
+    navbar()
+    ui.label("username").bind_text_from(app.storage.user, "username")
+    ui.label('Hello, NiceGUI!')
+    # NOTE dark mode will be persistent for each user across tabs and server restarts
+    ui.dark_mode().bind_value(app.storage.user, 'dark_mode')
+    ui.checkbox('dark mode').bind_value(app.storage.user, 'dark_mode')
+    ui.upload(multiple=True,on_upload=handle_upload).classes('max-w-full' )
+
+
 @ui.page('/login')
 def login(redirect_to: str = '/') -> Optional[RedirectResponse]:
+    navbar()
     def login():
         if 'username' in app.storage.user.keys():
             if app.storage.user['username'] == username.value:
@@ -186,7 +141,7 @@ def login(redirect_to: str = '/') -> Optional[RedirectResponse]:
                 return
         
         
-        user = authenticate_user(fake_users_db, username.value, password.value)
+        user = authenticate_user(username.value, password.value)
         if not user:
             ui.notify('Login failed. Please check your credentials.', color='negative')
             return
@@ -211,7 +166,88 @@ def login(redirect_to: str = '/') -> Optional[RedirectResponse]:
     ui.button('Log in', on_click=login)
     ui.button('Log out', on_click=logout)
     ui.button('Go to root', on_click = lambda: ui.navigate.to("/"))
+    ui.button('Go to projects', on_click = lambda: ui.navigate.to("/projects"))
 
+def handle_delete_project(project_to_delete) -> None:
+    def delete_project():
+        print("project deletion")
+        with Session(engine) as session:
+            session.delete(project_to_delete)
+            session.commit()
+        dialog.close()
+        ui.run_javascript('location.reload();')
+        
+    
+        
+
+    with ui.dialog() as dialog, ui.card():
+        ui.label(f"Are you sure that you want to delete {project_to_delete.name}?")
+        ui.button("Yes", on_click=lambda: delete_project())
+        ui.button("No", on_click=dialog.close)
+    
+    dialog.open()
+
+def project_bar(project: Project) -> None:
+    with ui.row():
+        ui.label(project.name)
+        ui.button("Go to project", on_click= lambda: ui.navigate.to(f"/project/{project.id}"))
+        ui.button("Delete project", on_click=lambda: handle_delete_project(project))
+    
+
+@ui.page("/project/{project_id}")
+def project_edit(project_id) -> None:
+    ui.label(project_id)
+
+@ui.page("/projects")
+def projects() -> Optional[RedirectResponse]:
+    navbar()
+    if app.storage.user.get("authenticated") != True:
+        ui.navigate.to("/login")
+    else:
+        projects = db.get_projects(app.storage.user["username"])
+        ui.button("Add project", on_click = lambda: ui.navigate.to("/add-project"))
+        for project in projects:
+            project_bar(project)      
+
+def is_authenticated():
+    return True
+
+@ui.page("/add-project")
+def add_project():
+    navbar()
+    def add_project_handler():
+        ### Database section
+        with Session(engine) as session:
+            current_user = session.exec(
+                select(User).where(User.username == app.storage.user["username"])
+            ).one()
+            if current_user.projects != []: 
+                other_project_names = list(map(lambda project: project.name, current_user.projects))
+                print(other_project_names)
+                if project_name.value in other_project_names:
+                    raise ValueError("Project with this name already created for this user!")
+                
+            new_project = Project(
+                name = project_name.value,
+                description = project_description.value,
+                user = current_user
+            )
+            session.add(new_project)
+            
+            ### Storage creation section
+            project_id = session.exec(
+                select(Project.id).where(Project.user == current_user, Project.name == project_name.value)
+            ).one()
+            project_path = os.path.join(USER_PROJECTS_PATH, str(project_id))
+            os.makedirs(project_path)
+            session.commit()
+
+    if not is_authenticated():
+        ui.navigate.to("/login")
+    else:
+        project_name = ui.input('Project name')
+        project_description = ui.input("Project description")
+        ui.button('Add', on_click=add_project_handler)
 
 
 ui.run_with(

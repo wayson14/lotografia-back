@@ -20,13 +20,6 @@ async def handle_upload(e: events.UploadEventArguments):
     print(dest)
 
 ## UI
-@ui.page('/')
-async def show():
-    ui.label("username").bind_text_from(app.storage.user, "username")
-    ui.label('Hello, NiceGUI!')
-    # NOTE dark mode will be persistent for each user across tabs and server restarts
-    ui.dark_mode().bind_value(app.storage.user, 'dark_mode')
-    ui.checkbox('dark mode').bind_value(app.storage.user, 'dark_mode')
-    ui.upload(multiple=True,on_upload=handle_upload).classes('max-w-full' )
+
 
 

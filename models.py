@@ -12,7 +12,14 @@ class TokenData(BaseModel):
 
 
 ### USER 
-class User(SQLModel, table=True): # define a user model using Pydantic BaseModel class
+class UserBase(BaseModel):
+    id: int
+    username: str
+    email: str | None
+    full_name: str | None
+    disabled: bool | None
+
+class User(UserBase, SQLModel, table=True): # define a user model using Pydantic BaseModel class
     id: int | None = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True)
     email: str | None = Field(default=None, index=True, unique=True)
@@ -27,8 +34,10 @@ class User(SQLModel, table=True): # define a user model using Pydantic BaseModel
 
     
 
-# class UserPublic(User):
-#     id: int
+class UserPublic(UserBase):
+    id: int
+    username: str
+    
 
 
 
