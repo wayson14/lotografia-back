@@ -132,12 +132,14 @@ def check_if_authenticated():
             # Do stuff before func possibly using arg...
             print("AUTH DECORATOR")
             if app.storage.user.get("authenticated") != True:
+                print("aaa")
                 ui.navigate.to("/login")
-            else:
-                pass
-            result = func(*args, **kwargs)
+                return
+            else:  
+                print("bbb")
+                return  func(*args, **kwargs)
             # Do stuff after func possibly using arg...
-            return result
+            # return result
 
         return wrapper
 
@@ -271,8 +273,13 @@ def handle_download(e: events.UploadEventArguments) -> None:
     pass
 
 # file opening (.las, .tiff)
-
-
+def handle_open_file(file_entry: os.DirEntry) -> None:
+    print("OPENING FILE")
+    if file_entry.name[-3:].lower() in ["png", "jpg"]:
+        ui.image(file_entry.path)
+    else:
+        ui.notify("This file extension is not supported yet!", type="info")
+        print(file_entry.name[-3:].lower())
 # file move (to other project)
 
 
@@ -280,12 +287,14 @@ def handle_download(e: events.UploadEventArguments) -> None:
 def file_bar(file_entry: os.DirEntry) -> None:
     with ui.row():
         ui.label(file_entry.name)
-        ui.button("Open file", on_click=lambda: ui.notify("Not implemented yet!", type="info"))
+        ui.button("Open file", on_click=lambda: handle_open_file(file_entry))
         ui.button("Download file", on_click=lambda e: ui.download.file(file_entry.path))
         ui.button("Delete file", on_click=lambda: handle_delete_file(file_entry))
         ui.button("Move file", on_click=lambda e: ui.notify("Not implemented yet!", type="info"))
 
+
 @ui.page("/project/{project_id}")
+@check_if_authenticated()
 def project_edit(project_id: int) -> None:
     navbar()
     ### getting project data
