@@ -113,13 +113,19 @@ async def handle_upload(e: events.UploadEventArguments):
     print(dest)
 
 
-# UI
+def is_authenticated():
+    return True
+
+
+### === UI === ###
 def navbar():
     with ui.row():
         ui.button('Go to root', on_click = lambda: ui.navigate.to("/"))
         ui.button('Go to projects', on_click = lambda: ui.navigate.to("/projects"))
         ui.button('Go to login', on_click = lambda: ui.navigate.to("/login"))
 
+
+### WELCOME
 @ui.page('/')
 async def show():
     navbar()
@@ -130,7 +136,7 @@ async def show():
     ui.checkbox('dark mode').bind_value(app.storage.user, 'dark_mode')
     ui.upload(multiple=True,on_upload=handle_upload).classes('max-w-full' )
 
-
+### LOGIN 
 @ui.page('/login')
 def login(redirect_to: str = '/') -> Optional[RedirectResponse]:
     navbar()
@@ -168,50 +174,8 @@ def login(redirect_to: str = '/') -> Optional[RedirectResponse]:
     ui.button('Go to root', on_click = lambda: ui.navigate.to("/"))
     ui.button('Go to projects', on_click = lambda: ui.navigate.to("/projects"))
 
-def handle_delete_project(project_to_delete) -> None:
-    def delete_project():
-        print("project deletion")
-        with Session(engine) as session:
-            session.delete(project_to_delete)
-            session.commit()
-        dialog.close()
-        ui.run_javascript('location.reload();')
-        
-    
-        
 
-    with ui.dialog() as dialog, ui.card():
-        ui.label(f"Are you sure that you want to delete {project_to_delete.name}?")
-        ui.button("Yes", on_click=lambda: delete_project())
-        ui.button("No", on_click=dialog.close)
-    
-    dialog.open()
-
-def project_bar(project: Project) -> None:
-    with ui.row():
-        ui.label(project.name)
-        ui.button("Go to project", on_click= lambda: ui.navigate.to(f"/project/{project.id}"))
-        ui.button("Delete project", on_click=lambda: handle_delete_project(project))
-    
-
-@ui.page("/project/{project_id}")
-def project_edit(project_id) -> None:
-    ui.label(project_id)
-
-@ui.page("/projects")
-def projects() -> Optional[RedirectResponse]:
-    navbar()
-    if app.storage.user.get("authenticated") != True:
-        ui.navigate.to("/login")
-    else:
-        projects = db.get_projects(app.storage.user["username"])
-        ui.button("Add project", on_click = lambda: ui.navigate.to("/add-project"))
-        for project in projects:
-            project_bar(project)      
-
-def is_authenticated():
-    return True
-
+### PROJECT CREATION
 @ui.page("/add-project")
 def add_project():
     navbar()
@@ -250,6 +214,48 @@ def add_project():
         ui.button('Add', on_click=add_project_handler)
 
 
+### PROJECT DELETION
+def handle_delete_project(project_to_delete) -> None:
+    def delete_project():
+        print("project deletion")
+        with Session(engine) as session:
+            session.delete(project_to_delete)
+            session.commit()
+        dialog.close()
+        ui.run_javascript('location.reload();')
+        
+    with ui.dialog() as dialog, ui.card():
+        ui.label(f"Are you sure that you want to delete {project_to_delete.name}?")
+        ui.button("Yes", on_click=lambda: delete_project())
+        ui.button("No", on_click=dialog.close)
+    dialog.open()
+
+
+### PROJECT/project_id PAGE
+@ui.page("/project/{project_id}")
+def project_edit(project_id) -> None:
+    ui.label(project_id)
+
+
+### projects PAGE
+def project_bar(project: Project) -> None:
+    with ui.row():
+        ui.label(project.name)
+        ui.button("Go to project", on_click= lambda: ui.navigate.to(f"/project/{project.id}"))
+        ui.button("Delete project", on_click=lambda: handle_delete_project(project))
+    
+@ui.page("/projects")
+def projects() -> Optional[RedirectResponse]:
+    navbar()
+    if app.storage.user.get("authenticated") != True:
+        ui.navigate.to("/login")
+    else:
+        projects = db.get_projects(app.storage.user["username"])
+        ui.button("Add project", on_click = lambda: ui.navigate.to("/add-project"))
+        for project in projects:
+            project_bar(project)      
+
+### APP MOUNT WITH FASTAPI
 ui.run_with(
     fastapi_app,
     mount_path='/app/',  # NOTE this can be omitted if you want the paths passed to @ui.page to be at the root
@@ -257,6 +263,6 @@ ui.run_with(
 )
 
 
-
+### === FASTAPI MOUNT === ###
 if __name__ == '__main__':
     uvicorn.run('main:fastapi_app', host='127.0.0.1', port=8000, log_level='info')
