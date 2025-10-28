@@ -4,7 +4,7 @@ user_projects/
 # DB development
 *.db
 *.sqlite3
-
+.nicegui
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
